@@ -101,10 +101,80 @@ class ValidatorApp:
     def _setup_styles(self):
         self.style = ttk.Style()
         self.style.theme_use('clam')
-        self.style.configure("Treeview", rowheight=28, font=('Segoe UI', 9))
-        self.style.configure("Treeview.Heading", font=('Segoe UI', 9, 'bold'))
-        self.style.configure("Toolbar.TButton", padding=(8, 4))
-        self.style.configure("Status.TLabel", padding=(4, 2))
+        c = self.colors
+
+        # ── Global defaults ──
+        self.style.configure(".", background=c.bg, foreground=c.fg, font=('Segoe UI', 10))
+
+        # ── Treeview (file list) ──
+        self.style.configure("Treeview",
+            rowheight=30, font=('Consolas', 10),
+            background=c.surface, foreground=c.fg,
+            fieldbackground=c.surface, borderwidth=0,
+        )
+        self.style.configure("Treeview.Heading",
+            font=('Segoe UI', 10, 'bold'),
+            background=c.toolbar_bg, foreground=c.fg,
+            borderwidth=0, relief="flat",
+        )
+        self.style.map("Treeview",
+            background=[("selected", c.selection)],
+            foreground=[("selected", c.fg)],
+        )
+        self.style.map("Treeview.Heading",
+            background=[("active", c.border)],
+        )
+
+        # ── Buttons ──
+        self.style.configure("Toolbar.TButton",
+            padding=(12, 6), font=('Segoe UI', 9, 'bold'),
+            background=c.toolbar_bg, foreground=c.fg,
+            borderwidth=1, relief="flat",
+        )
+        self.style.map("Toolbar.TButton",
+            background=[("active", c.selection), ("pressed", c.accent)],
+            foreground=[("active", c.fg)],
+        )
+        self.style.configure("Accent.TButton",
+            padding=(14, 7), font=('Segoe UI', 10, 'bold'),
+            background=c.accent, foreground="#ffffff",
+        )
+        self.style.map("Accent.TButton",
+            background=[("active", c.info)],
+        )
+
+        # ── Frames & Labels ──
+        self.style.configure("TFrame", background=c.bg)
+        self.style.configure("Toolbar.TFrame", background=c.toolbar_bg)
+        self.style.configure("TLabel", background=c.bg, foreground=c.fg, font=('Segoe UI', 10))
+        self.style.configure("Muted.TLabel", foreground=c.muted, font=('Segoe UI', 9))
+        self.style.configure("Heading.TLabel", foreground=c.heading, font=('Segoe UI', 12, 'bold'))
+        self.style.configure("TLabelframe", background=c.bg, foreground=c.fg)
+        self.style.configure("TLabelframe.Label", background=c.bg, foreground=c.accent, font=('Segoe UI', 10, 'bold'))
+
+        # ── Status bar ──
+        self.style.configure("Status.TLabel",
+            padding=(8, 4), font=('Consolas', 9),
+            background=c.statusbar_bg, foreground=c.statusbar_fg,
+        )
+
+        # ── Separator ──
+        self.style.configure("TSeparator", background=c.border)
+
+        # ── Scrollbar ──
+        self.style.configure("TScrollbar",
+            background=c.surface, troughcolor=c.bg,
+            borderwidth=0, arrowsize=12,
+        )
+
+        # ── PanedWindow ──
+        self.style.configure("TPanedwindow", background=c.border)
+
+        # ── Entry ──
+        self.style.configure("TEntry",
+            fieldbackground=c.surface, foreground=c.fg,
+            insertcolor=c.fg, borderwidth=1,
+        )
 
     def _setup_menu(self):
         menu = tk.Menu(self.root)
@@ -160,66 +230,82 @@ class ValidatorApp:
         self.root.bind("<F5>", lambda e: self.run_validation())
 
     def _setup_toolbar(self):
-        tb = ttk.Frame(self.root)
-        tb.pack(fill=tk.X, padx=8, pady=(8, 4))
+        tb = ttk.Frame(self.root, style="Toolbar.TFrame")
+        tb.pack(fill=tk.X, padx=0, pady=0)
 
-        ttk.Button(tb, text="\u2795 Add Files", command=self.add_files,
-                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
-        ttk.Button(tb, text="\U0001f4c2 Add Folder", command=self.add_folder,
-                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        # Inner padding frame
+        inner = ttk.Frame(tb, style="Toolbar.TFrame")
+        inner.pack(fill=tk.X, padx=10, pady=6)
 
-        ttk.Separator(tb, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=2)
+        # ── Left: File actions ──
+        ttk.Button(inner, text="Add Files", command=self.add_files,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(inner, text="Add Folder", command=self.add_folder,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=3)
 
-        ttk.Button(tb, text="\u25b6 Validate", command=self.run_validation,
-                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
-        ttk.Button(tb, text="\u2728 Format", command=self.format_file_ui,
-                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Separator(inner, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=2)
 
-        ttk.Separator(tb, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=2)
+        # ── Validate (accent) ──
+        ttk.Button(inner, text="Validate", command=self.run_validation,
+                   style="Accent.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(inner, text="Format", command=self.format_file_ui,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=3)
 
-        ttk.Button(tb, text="\U0001f4cb Metadata", command=self.load_metadata,
-                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
-        ttk.Button(tb, text="\U0001f50d Maven", command=self.scan_maven_jars,
-                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Separator(inner, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=2)
 
-        ttk.Separator(tb, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=2)
+        # ── Maven / Metadata ──
+        ttk.Button(inner, text="Metadata", command=self.load_metadata,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=3)
+        ttk.Button(inner, text="Maven", command=self.scan_maven_jars,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=3)
 
-        ttk.Button(tb, text="\U0001f4ca Report", command=lambda: self._export_report("html"),
-                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Separator(inner, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=2)
 
-        # Right-side buttons
-        ttk.Button(tb, text="\U0001f5d1 Clear", command=self.clear_all,
-                   style="Toolbar.TButton").pack(side=tk.RIGHT, padx=2)
+        ttk.Button(inner, text="Report", command=lambda: self._export_report("html"),
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=3)
 
-        self.theme_btn = ttk.Button(tb, text="\U0001f313 Theme", command=self._toggle_theme,
+        # ── Right side ──
+        ttk.Button(inner, text="Clear All", command=self.clear_all,
+                   style="Toolbar.TButton").pack(side=tk.RIGHT, padx=(3, 0))
+
+        self.theme_btn = ttk.Button(inner, text="Theme", command=self._toggle_theme,
                                     style="Toolbar.TButton")
-        self.theme_btn.pack(side=tk.RIGHT, padx=2)
+        self.theme_btn.pack(side=tk.RIGHT, padx=3)
 
         # Metadata status indicator
-        self.meta_lbl = tk.Label(tb, text="\u26a0\ufe0f No Metadata", bg="#ffebee",
-                                 fg="#c62828", padx=10, relief=tk.RIDGE, font=('Segoe UI', 8))
-        self.meta_lbl.pack(side=tk.RIGHT, padx=10)
+        self.meta_lbl = tk.Label(inner, text="No Metadata", padx=10, pady=2,
+                                 font=('Consolas', 9), relief=tk.FLAT)
+        self.meta_lbl.pack(side=tk.RIGHT, padx=8)
+
+        # Separator line below toolbar
+        ttk.Separator(self.root, orient=tk.HORIZONTAL).pack(fill=tk.X)
 
     def _setup_main_layout(self):
         pane = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        pane.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        pane.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
 
         # Left panel: File list
         left = ttk.Frame(pane)
         pane.add(left, weight=3)
 
+        # Drop zone hint label (hidden when files exist)
+        self.drop_hint = tk.Label(
+            left, text="Drop XML files here\nor use Add Files / Add Folder",
+            font=('Segoe UI', 12), justify="center",
+        )
+
         cols = ("check", "file", "status", "errors", "warnings")
         self.tree = ttk.Treeview(left, columns=cols, show="headings", selectmode="browse")
         self.tree.heading("check", text="\u2611", command=self._toggle_all_checks)
-        self.tree.heading("file", text="File Name")
+        self.tree.heading("file", text="File")
         self.tree.heading("status", text="Status")
-        self.tree.heading("errors", text="Errors")
-        self.tree.heading("warnings", text="Warnings")
+        self.tree.heading("errors", text="Err")
+        self.tree.heading("warnings", text="Warn")
         self.tree.column("check", width=35, anchor="center", minwidth=35)
-        self.tree.column("file", width=320, minwidth=150)
-        self.tree.column("status", width=90, anchor="center", minwidth=70)
-        self.tree.column("errors", width=60, anchor="center", minwidth=50)
-        self.tree.column("warnings", width=70, anchor="center", minwidth=50)
+        self.tree.column("file", width=340, minwidth=150)
+        self.tree.column("status", width=80, anchor="center", minwidth=70)
+        self.tree.column("errors", width=50, anchor="center", minwidth=40)
+        self.tree.column("warnings", width=55, anchor="center", minwidth=40)
 
         # Treeview scrollbar
         tree_scroll = ttk.Scrollbar(left, orient=tk.VERTICAL, command=self.tree.yview)
@@ -233,13 +319,14 @@ class ValidatorApp:
         self.tree.bind("<<TreeviewSelect>>", self._update_summary)
 
         # Right panel: Summary
-        right = ttk.LabelFrame(pane, text="\U0001f4cb Summary")
+        right = ttk.LabelFrame(pane, text="Summary")
         pane.add(right, weight=1)
 
         self.summary = scrolledtext.ScrolledText(
-            right, width=35, font=('Consolas', 9), wrap="word", state="disabled",
+            right, width=35, font=('Consolas', 10), wrap="word", state="disabled",
+            borderwidth=0, relief="flat",
         )
-        self.summary.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.summary.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
     def _setup_statusbar(self):
         status_frame = ttk.Frame(self.root)
@@ -253,29 +340,67 @@ class ValidatorApp:
         self.status_lbl.pack(fill=tk.X, padx=2, pady=1)
 
     def _setup_drag_drop(self):
-        """Setup drag and drop support (requires tkinterdnd2 if available)."""
+        """Setup drag and drop support using tkinterdnd2 if available,
+        otherwise fall back to native Windows OLE drag & drop via tkdnd."""
+        self._dnd_available = False
         try:
             from tkinterdnd2 import DND_FILES
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind('<<Drop>>', self._on_drop)
-            logger.info("Drag & drop enabled")
-        except ImportError:
-            logger.debug("tkinterdnd2 not available — drag & drop disabled")
+            self._dnd_available = True
+            logger.info("Drag & drop enabled (tkinterdnd2)")
+        except (ImportError, tk.TclError):
+            # Try loading tkdnd directly (bundled with some Python installs)
+            try:
+                self.root.tk.eval('package require tkdnd')
+                self.root.tk.eval(
+                    'tkdnd::drop_target register %s *' % self.root._w
+                )
+                self.root.bind('<<Drop>>', self._on_drop_tkdnd)
+                self._dnd_available = True
+                logger.info("Drag & drop enabled (tkdnd)")
+            except tk.TclError:
+                logger.debug("No drag & drop library found — feature disabled")
+
+        # Show drop hint if no files and DnD is available
+        self._update_drop_hint()
 
     def _on_drop(self, event):
-        """Handle dropped files."""
+        """Handle dropped files (tkinterdnd2)."""
         paths = self.root.tk.splitlist(event.data)
+        self._process_dropped_paths(paths)
+
+    def _on_drop_tkdnd(self, event):
+        """Handle dropped files (native tkdnd)."""
+        data = event.data if hasattr(event, 'data') else ''
+        paths = self.root.tk.splitlist(data) if data else []
+        self._process_dropped_paths(paths)
+
+    def _process_dropped_paths(self, paths):
+        """Process a list of dropped file/folder paths."""
         added = 0
         for p in paths:
+            p = p.strip('{}')  # Windows wraps paths with spaces in braces
             if os.path.isfile(p) and p.lower().endswith('.xml'):
-                self._add_single_file(p)
-                added += 1
+                if self._add_single_file(p):
+                    added += 1
             elif os.path.isdir(p):
                 for xml_path in find_xml_files(p):
-                    self._add_single_file(xml_path)
-                    added += 1
+                    if self._add_single_file(xml_path):
+                        added += 1
         if added:
             self._set_status(f"Added {added} file(s) via drag & drop")
+            self._update_drop_hint()
+
+    def _update_drop_hint(self):
+        """Show or hide the drop hint overlay based on file count."""
+        try:
+            if not self.files:
+                self.drop_hint.place(relx=0.3, rely=0.4, anchor="center")
+            else:
+                self.drop_hint.place_forget()
+        except (tk.TclError, AttributeError):
+            pass
 
     # ─── Theme ─────────────────────────────────────────────
 
@@ -288,11 +413,45 @@ class ValidatorApp:
         else:
             self.colors = LIGHT_THEME
 
-        # Apply to root window and summary
+        c = self.colors
+
+        # Re-apply all ttk styles with new colors
+        self._setup_styles()
+
+        # Apply to root window
         try:
-            self.root.configure(bg=self.colors.bg)
-            self.summary.configure(bg=self.colors.surface, fg=self.colors.fg)
+            self.root.configure(bg=c.bg)
         except tk.TclError:
+            pass
+
+        # Apply to tk.Text widgets (summary)
+        try:
+            self.summary.configure(bg=c.surface, fg=c.fg, insertbackground=c.fg,
+                                   selectbackground=c.selection, selectforeground=c.fg)
+        except (tk.TclError, AttributeError):
+            pass
+
+        # Apply to metadata label
+        try:
+            if self.maven_metadata or self.metadata:
+                self.meta_lbl.configure(bg=c.accent, fg="#ffffff")
+            else:
+                self.meta_lbl.configure(bg=c.surface, fg=c.muted)
+        except (tk.TclError, AttributeError):
+            pass
+
+        # Apply to drop hint
+        try:
+            self.drop_hint.configure(bg=c.bg, fg=c.muted)
+        except (tk.TclError, AttributeError):
+            pass
+
+        # Apply to menus
+        try:
+            for menu_widget in self.root.winfo_children():
+                if isinstance(menu_widget, tk.Menu):
+                    self._style_menu(menu_widget)
+        except Exception:
             pass
 
         if HAS_MODERN_UI:
@@ -301,9 +460,26 @@ class ValidatorApp:
             except Exception:
                 pass
 
-        icons = {"Light": "\u2600\ufe0f", "Dark": "\U0001f319", "System": "\U0001f4bb"}
-        self.theme_btn.config(text=f"{icons.get(theme, '')} {theme}")
+        try:
+            self.theme_btn.config(text=f"{theme} Theme")
+        except (tk.TclError, AttributeError):
+            pass
         self._set_status(f"Theme: {theme}")
+
+    def _style_menu(self, menu):
+        """Recursively style menu widgets."""
+        c = self.colors
+        try:
+            menu.configure(bg=c.menu_bg, fg=c.menu_fg, activebackground=c.accent,
+                          activeforeground="#ffffff", relief="flat", borderwidth=0)
+            for i in range(menu.index("end") + 1 if menu.index("end") is not None else 0):
+                try:
+                    submenu = menu.nametowidget(menu.entrycget(i, "menu"))
+                    self._style_menu(submenu)
+                except (tk.TclError, KeyError):
+                    pass
+        except (tk.TclError, TypeError):
+            pass
 
     def _toggle_theme(self):
         themes = ["Light", "Dark", "System"]
@@ -354,6 +530,7 @@ class ValidatorApp:
                          values=("\u2611", entry.basename, "\u23f3 Pending", "-", "-"))
         self.config.add_recent_file(path)
         self._update_recent_menu()
+        self._update_drop_hint()
         return True
 
     def _update_recent_menu(self):
@@ -493,7 +670,12 @@ class ValidatorApp:
 
             txt += f"\nFirst 10 issues:\n"
             for e in entry.result.errors[:10]:
-                icon = "\u274c" if e.is_error else "\u26a0\ufe0f"
+                if e.severity == Severity.ERROR:
+                    icon = "\u274c"
+                elif e.severity == Severity.WARNING:
+                    icon = "\u26a0"
+                else:
+                    icon = "\u2139"
                 txt += f"  {icon} L{e.line or '?'} [{e.code}] {e.message}\n"
         elif entry.result:
             txt += "\u2705 No issues found!\n"
@@ -517,8 +699,10 @@ class ValidatorApp:
         if not entry:
             return
 
+        c = self.colors
         win = tk.Toplevel(self.root)
-        win.title(f"Edit: {entry.basename}")
+        win.title(f"{entry.basename} — Editor")
+        win.configure(bg=c.bg)
         win.minsize(800, 500)
         try:
             win.state('zoomed')
@@ -527,53 +711,59 @@ class ValidatorApp:
 
         # Main layout: Vertical split (upper: errors+editor, lower: fix panel)
         pane = ttk.PanedWindow(win, orient=tk.VERTICAL)
-        pane.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+        pane.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
         upper = ttk.PanedWindow(pane, orient=tk.HORIZONTAL)
         pane.add(upper, weight=3)
 
         # ── Error List ──
-        err_fr = ttk.LabelFrame(upper, text="\u274c Issues")
+        err_fr = ttk.LabelFrame(upper, text="Issues")
         upper.add(err_fr, weight=1)
 
-        err_list = tk.Listbox(err_fr, font=('Consolas', 9), activestyle='dotbox')
+        err_list = tk.Listbox(err_fr, font=('Consolas', 10), activestyle='dotbox',
+                              bg=c.surface, fg=c.fg, selectbackground=c.selection,
+                              selectforeground=c.fg, borderwidth=0, highlightthickness=0)
         err_scroll = ttk.Scrollbar(err_fr, orient=tk.VERTICAL, command=err_list.yview)
         err_list.configure(yscrollcommand=err_scroll.set)
         err_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         err_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         # ── Code Editor ──
-        code_fr = ttk.LabelFrame(upper, text="\U0001f4dd Editor")
+        code_fr = ttk.LabelFrame(upper, text="Editor")
         upper.add(code_fr, weight=2)
 
         # Editor toolbar
         editor_tb = ttk.Frame(code_fr)
-        editor_tb.pack(fill=tk.X, pady=(0, 2))
+        editor_tb.pack(fill=tk.X, pady=(2, 2), padx=2)
 
-        stat_lbl = tk.Label(editor_tb, text="Unchanged", fg="gray", font=('Segoe UI', 8))
+        stat_lbl = tk.Label(editor_tb, text="Unchanged", fg=c.muted, bg=c.bg,
+                            font=('Consolas', 9))
         stat_lbl.pack(side=tk.RIGHT, padx=5)
 
-        ttk.Button(editor_tb, text="\U0001f4be Save & Validate",
-                   command=lambda: self._save_and_revalidate(path, code_txt, err_list, stat_lbl, win)
-                   ).pack(side=tk.LEFT, padx=2)
-        ttk.Button(editor_tb, text="\U0001f527 Fix Selected",
-                   command=lambda: self._auto_fix_single(path, err_list, code_txt, stat_lbl, win)
-                   ).pack(side=tk.LEFT, padx=2)
-        ttk.Button(editor_tb, text="\u2728 Fix All",
-                   command=lambda: self._auto_fix_batch(path, err_list, code_txt, stat_lbl, win)
-                   ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(editor_tb, text="Save & Validate",
+                   command=lambda: self._save_and_revalidate(path, code_txt, err_list, stat_lbl, win),
+                   style="Accent.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(editor_tb, text="Fix Selected",
+                   command=lambda: self._auto_fix_single(path, err_list, code_txt, stat_lbl, win),
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
+        ttk.Button(editor_tb, text="Fix All",
+                   command=lambda: self._auto_fix_batch(path, err_list, code_txt, stat_lbl, win),
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=2)
 
         # Code area with gutter
         code_cont = ttk.Frame(code_fr)
         code_cont.pack(fill=tk.BOTH, expand=True)
 
-        gutter = tk.Text(code_cont, width=4, bg=self.colors.gutter_bg, state="disabled",
-                         font=('Consolas', 9), takefocus=0, cursor="arrow")
+        gutter = tk.Text(code_cont, width=5, bg=c.gutter_bg, fg=c.muted,
+                         state="disabled", font=('Consolas', 10), takefocus=0,
+                         cursor="arrow", borderwidth=0, highlightthickness=0,
+                         padx=4)
         gutter.pack(side=tk.LEFT, fill=tk.Y)
 
-        code_txt = tk.Text(code_cont, wrap="none", font=('Consolas', 9), undo=True,
-                           bg=self.colors.editor_bg, fg=self.colors.fg,
-                           insertbackground=self.colors.fg)
+        code_txt = tk.Text(code_cont, wrap="none", font=('Consolas', 10), undo=True,
+                           bg=c.editor_bg, fg=c.fg, insertbackground=c.accent,
+                           selectbackground=c.selection, selectforeground=c.fg,
+                           borderwidth=0, highlightthickness=0, padx=4, pady=2)
         code_txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         vs = ttk.Scrollbar(code_cont,
@@ -582,25 +772,26 @@ class ValidatorApp:
         code_txt.config(yscrollcommand=lambda *a: (vs.set(*a), gutter.yview_moveto(a[0])))
 
         # Error highlighting tag
-        code_txt.tag_config("err_line", background=self.colors.err_highlight)
+        code_txt.tag_config("err_line", background=c.err_highlight)
 
         # ── Fix Panel ──
-        fix_fr = ttk.LabelFrame(pane, text="\U0001f4a1 Fix Suggestions")
+        fix_fr = ttk.LabelFrame(pane, text="Fix Suggestions")
         pane.add(fix_fr, weight=1)
 
         fix_txt = scrolledtext.ScrolledText(
-            fix_fr, bg=self.colors.surface, fg=self.colors.fg,
-            font=('Segoe UI', 10), wrap="word",
+            fix_fr, bg=c.surface, fg=c.fg, font=('Segoe UI', 10), wrap="word",
+            borderwidth=0, highlightthickness=0, padx=8, pady=4,
+            selectbackground=c.selection, selectforeground=c.fg,
         )
         fix_txt.pack(fill=tk.BOTH, expand=True)
 
         # Configure text tags for rich formatting
-        fix_txt.tag_config("header", font=('Segoe UI', 11, 'bold'), foreground=self.colors.accent)
-        fix_txt.tag_config("bold", font=('Segoe UI', 9, 'bold'))
-        fix_txt.tag_config("context", font=('Consolas', 9),
-                           background=self.colors.highlight, lmargin1=10)
+        fix_txt.tag_config("header", font=('Segoe UI', 11, 'bold'), foreground=c.accent)
+        fix_txt.tag_config("bold", font=('Segoe UI', 10, 'bold'), foreground=c.heading)
+        fix_txt.tag_config("context", font=('Consolas', 10),
+                           background=c.highlight, foreground=c.fg, lmargin1=10)
         fix_txt.tag_config("code", font=('Consolas', 10),
-                           background=self.colors.code_bg, lmargin1=10)
+                           background=c.code_bg, foreground=c.success, lmargin1=10)
 
         # Load file content
         file_lines: List[str] = []
@@ -662,9 +853,16 @@ class ValidatorApp:
     def _populate_errors(self, listbox: tk.Listbox, errors: List[ValidationError]):
         listbox.delete(0, tk.END)
         for e in errors:
-            icon = "\u274c" if e.is_error else "\u26a0\ufe0f"
+            if e.severity == Severity.ERROR:
+                icon = "\u274c"
+                color = self.colors.error
+            elif e.severity == Severity.WARNING:
+                icon = "\u26a0"
+                color = self.colors.warning
+            else:
+                icon = "\u2139"
+                color = self.colors.info
             listbox.insert(tk.END, f"{icon} L{e.line or '?'} [{e.code}] {e.message}")
-            color = self.colors.error if e.is_error else self.colors.warning
             listbox.itemconfig(tk.END, fg=color)
 
     def _save_and_revalidate(self, path, editor, err_list, stat_lbl, parent_win):
@@ -807,41 +1005,52 @@ class ValidatorApp:
 
     def scan_maven_jars(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("\U0001f50d Maven JAR Scanner")
-        dialog.geometry("620x420")
+        dialog.title("Maven JAR Scanner")
+        dialog.geometry("650x500")
         dialog.transient(self.root)
         dialog.grab_set()
 
         ttk.Label(dialog, text="Scan Maven JARs for Metadata",
                   font=('Segoe UI', 14, 'bold')).pack(pady=10)
-        ttk.Label(dialog, text="Choose an option below:",
+        ttk.Label(dialog, text="Choose an option below (metadata accumulates across scans):",
                   font=('Segoe UI', 10)).pack(pady=5)
 
-        # Option 1: JAR file
-        f1 = ttk.LabelFrame(dialog, text="Option 1: Select JAR File", padding=10)
-        f1.pack(fill=tk.X, padx=20, pady=8)
+        # Option 1: Multiple JAR files
+        f1 = ttk.LabelFrame(dialog, text="Option 1: Select JAR File(s) - supports multiple selection", padding=10)
+        f1.pack(fill=tk.X, padx=20, pady=6)
         jar_var = tk.StringVar()
-        ttk.Entry(f1, textvariable=jar_var, width=50).pack(side=tk.LEFT, padx=5)
-        ttk.Button(f1, text="Browse",
-                   command=lambda: jar_var.set(
-                       filedialog.askopenfilename(
-                           title="Select JAR", filetypes=[("JAR", "*.jar")], parent=dialog
-                       ) or jar_var.get()
-                   )).pack(side=tk.LEFT)
+        jar_entry = ttk.Entry(f1, textvariable=jar_var, width=50)
+        jar_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+        def browse_jars():
+            paths = filedialog.askopenfilenames(
+                title="Select JAR(s)", filetypes=[("JAR Files", "*.jar"), ("All Files", "*.*")],
+                parent=dialog,
+            )
+            if paths:
+                jar_var.set(";".join(paths))
+
+        browse_jar_btn = ttk.Button(f1, text="Browse JAR(s)", command=browse_jars)
+        browse_jar_btn.pack(side=tk.LEFT, padx=(4, 0))
 
         # Option 2: Folder
         f2 = ttk.LabelFrame(dialog, text="Option 2: Select JAR Folder", padding=10)
-        f2.pack(fill=tk.X, padx=20, pady=8)
+        f2.pack(fill=tk.X, padx=20, pady=6)
         folder_var = tk.StringVar()
-        ttk.Entry(f2, textvariable=folder_var, width=50).pack(side=tk.LEFT, padx=5)
-        ttk.Button(f2, text="Browse",
-                   command=lambda: folder_var.set(
-                       filedialog.askdirectory(title="Select Folder", parent=dialog) or folder_var.get()
-                   )).pack(side=tk.LEFT)
+        folder_entry = ttk.Entry(f2, textvariable=folder_var, width=50)
+        folder_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+        def browse_folder():
+            path = filedialog.askdirectory(title="Select Folder", parent=dialog)
+            if path:
+                folder_var.set(path)
+
+        browse_folder_btn = ttk.Button(f2, text="Browse Folder", command=browse_folder)
+        browse_folder_btn.pack(side=tk.LEFT, padx=(4, 0))
 
         # Option 3: Maven coordinates
         f3 = ttk.LabelFrame(dialog, text="Option 3: Maven Coordinates", padding=10)
-        f3.pack(fill=tk.X, padx=20, pady=8)
+        f3.pack(fill=tk.X, padx=20, pady=6)
         ttk.Label(f3, text="Group ID:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
         group_var = tk.StringVar()
         ttk.Entry(f3, textvariable=group_var, width=40).grid(row=0, column=1, padx=5)
@@ -849,54 +1058,55 @@ class ValidatorApp:
         artifact_var = tk.StringVar()
         ttk.Entry(f3, textvariable=artifact_var, width=40).grid(row=1, column=1, padx=5)
 
+        # Status display
+        status_frame = ttk.LabelFrame(dialog, text="Metadata Status", padding=6)
+        status_frame.pack(fill=tk.X, padx=20, pady=6)
+        current_count = len(self.maven_metadata) if self.maven_metadata else 0
+        status_var = tk.StringVar(value=f"Currently loaded: {current_count} classes")
+        ttk.Label(status_frame, textvariable=status_var, font=('Segoe UI', 9)).pack(anchor=tk.W)
+
         def start_scan():
-            jar = jar_var.get().strip()
+            jar_str = jar_var.get().strip()
             folder = folder_var.get().strip()
             gid = group_var.get().strip()
             aid = artifact_var.get().strip()
 
-            if jar:
-                self._scan_jar(jar, dialog)
+            if jar_str:
+                jar_paths = [j.strip() for j in jar_str.split(";") if j.strip()]
+                self._scan_multiple_jars(jar_paths, dialog)
             elif folder:
                 self._scan_jar_folder(folder, dialog)
             elif gid and aid:
                 self._scan_maven_coords(gid, aid, dialog)
             else:
                 messagebox.showwarning("Input Required",
-                                       "Select a JAR, folder, or enter Maven coordinates.",
+                                       "Select JAR(s), a folder, or enter Maven coordinates.",
                                        parent=dialog)
 
         btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=12)
-        ttk.Button(btn_frame, text="\U0001f50d Start Scan", command=start_scan).pack(side=tk.LEFT, padx=8)
-        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=8)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="Start Scan", command=start_scan).pack(side=tk.LEFT, padx=8)
+        ttk.Button(btn_frame, text="Clear Metadata",
+                   command=lambda: self._clear_maven_metadata(status_var)).pack(side=tk.LEFT, padx=8)
+        ttk.Button(btn_frame, text="Close", command=dialog.destroy).pack(side=tk.LEFT, padx=8)
 
-    def _scan_jar(self, jar_path: str, dialog: tk.Toplevel):
-        if not os.path.exists(jar_path):
-            messagebox.showerror("Error", f"JAR not found: {jar_path}", parent=dialog)
+    def _scan_multiple_jars(self, jar_paths: List[str], dialog: tk.Toplevel):
+        """Scan one or more JAR files and accumulate metadata."""
+        missing = [j for j in jar_paths if not os.path.exists(j)]
+        if missing:
+            messagebox.showerror("Error", f"JAR(s) not found:\n" + "\n".join(missing), parent=dialog)
             return
-        try:
-            from .._maven_import import get_extractor
-            extractor = get_extractor()
-            dialog.destroy()
-            self._set_status("Scanning JAR file...")
-            metadata = extractor.extract_from_jar(jar_path)
-            self._apply_maven_metadata(metadata, f"JAR: {os.path.basename(jar_path)}")
-        except ImportError:
-            self._scan_jar_fallback(jar_path, dialog)
-        except Exception as e:
-            messagebox.showerror("Error", f"Scan failed: {e}")
-            self._set_status("Ready")
-
-    def _scan_jar_fallback(self, jar_path: str, dialog: tk.Toplevel):
-        """Fallback when maven.extractor is not importable."""
         try:
             from ..maven.extractor import MavenMetadataExtractor
             dialog.destroy()
-            self._set_status("Scanning JAR file...")
+            self._set_status(f"Scanning {len(jar_paths)} JAR file(s)...")
             extractor = MavenMetadataExtractor()
-            metadata = extractor.extract_from_jar(jar_path)
-            self._apply_maven_metadata(metadata, f"JAR: {os.path.basename(jar_path)}")
+            all_meta = {}
+            for jar_path in jar_paths:
+                meta = extractor.extract_from_jar(jar_path)
+                all_meta.update(meta)
+            names = ", ".join(os.path.basename(j) for j in jar_paths)
+            self._apply_maven_metadata(all_meta, f"{len(jar_paths)} JAR(s): {names}")
         except Exception as e:
             messagebox.showerror("Error", f"Scan failed:\n{e}")
             self._set_status("Ready")
@@ -936,16 +1146,33 @@ class ValidatorApp:
             self._set_status("Ready")
 
     def _apply_maven_metadata(self, metadata: dict, source: str):
+        c = self.colors
         if metadata:
-            self.maven_metadata = metadata
+            if self.maven_metadata is None:
+                self.maven_metadata = {}
+            self.maven_metadata.update(metadata)
+            total = len(self.maven_metadata)
             self.meta_lbl.config(
-                text=f"\u2705 {source}: {len(metadata)} classes",
-                bg="#e3f2fd", fg="#1565c0",
+                text=f"Maven: {total} classes",
+                bg=c.accent, fg="#ffffff",
             )
-            messagebox.showinfo("Success", f"Extracted {len(metadata)} classes from {source}")
+            messagebox.showinfo("Success",
+                f"Extracted {len(metadata)} classes from {source}\n"
+                f"Total metadata: {total} classes")
         else:
             messagebox.showwarning("No Data", "No classes found.")
         self._set_status("Ready")
+
+    def _clear_maven_metadata(self, status_var=None):
+        """Clear all loaded Maven metadata."""
+        c = self.colors
+        self.maven_metadata = None
+        self.meta_lbl.config(
+            text="No Metadata", bg=c.surface, fg=c.muted,
+        )
+        if status_var:
+            status_var.set("Currently loaded: 0 classes")
+        self._set_status("Maven metadata cleared.")
 
     def _get_merged_metadata(self) -> Optional[dict]:
         if not self.metadata and not self.maven_metadata:
@@ -1001,6 +1228,7 @@ class ValidatorApp:
         self.summary.config(state="normal")
         self.summary.delete("1.0", tk.END)
         self.summary.config(state="disabled")
+        self._update_drop_hint()
         self._set_status("Cleared.")
 
     def _set_status(self, msg: str):

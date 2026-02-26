@@ -95,6 +95,10 @@ class ValidationResult:
         return sum(1 for e in self.errors if e.severity == Severity.WARNING)
 
     @property
+    def info_count(self) -> int:
+        return sum(1 for e in self.errors if e.severity == Severity.INFO)
+
+    @property
     def is_valid(self) -> bool:
         return self.error_count == 0
 

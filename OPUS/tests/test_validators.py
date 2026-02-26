@@ -27,7 +27,7 @@ class TestErrorCodeCoverage(unittest.TestCase):
             "E114", "E115", "E116", "E117", "E120", "E121", "E122",
             "E123", "E124", "E130", "E131", "E132", "E145", "E160",
             "E161", "E170", "E180", "E181", "E182", "E183", "E184",
-            "E185", "E200", "E201", "E300", "E301", "E303", "E310",
+            "E185", "E200", "E201", "E300", "E301", "E302", "E303", "E310",
         ]
         for code in expected:
             self.assertIn(code, CODE_META, f"Missing code: {code}")

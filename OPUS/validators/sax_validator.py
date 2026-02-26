@@ -56,6 +56,8 @@ class HybridValidator(ContentHandler):
         self.test_count = 0
         self.current_test: Optional[str] = None
         self.current_class: Optional[str] = None
+        self.current_method: Optional[str] = None
+        self.current_method_param_count: int = 0
 
         # Duplicate tracking
         self.test_names: Dict[str, int] = {}
@@ -213,6 +215,8 @@ class HybridValidator(ContentHandler):
                 self._err("E121", "<include> must be inside <methods>", line, col)
             self.methods_has_children = True
             mname = attrs.get("name")
+            self.current_method = mname
+            self.current_method_param_count = 0
             if not mname:
                 self._err("E122", "Include missing name", line, col)
             else:
@@ -243,6 +247,9 @@ class HybridValidator(ContentHandler):
                     self._err("E132", f"Duplicate parameter: '{pname}'", line, col, pname)
                 else:
                     self.param_names.add(pname)
+            # Count params within current include for E302
+            if self.current_method:
+                self.current_method_param_count += 1
 
             # Metadata enum validation
             if self.metadata and pname and pval and self.current_class and self.current_class in self.metadata:
@@ -292,6 +299,32 @@ class HybridValidator(ContentHandler):
 
     def endElement(self, name: str):
         line, col = self._pos()
+
+        # E302: Parameter count check when closing <include>
+        if name == "include" and self.current_method and self.metadata:
+            cls = self.current_class
+            mname = self.current_method
+            if cls and cls in self.metadata:
+                methods = self.metadata[cls].get("methods", {})
+                if isinstance(methods, dict) and mname in methods:
+                    expected = len(methods[mname].get("parameters", []))
+                    actual = self.current_method_param_count
+                    if expected > 0 and actual > 0 and actual != expected:
+                        if actual < expected:
+                            self._err(
+                                "E302",
+                                f"Method '{mname}' has {expected} params in signature, "
+                                f"XML provides {actual} — {expected - actual} optional param(s) may be missing",
+                                line, col, mname,
+                            )
+                        else:
+                            self._err(
+                                "E302",
+                                f"Method '{mname}' has {expected} params in signature, "
+                                f"XML provides {actual} — {actual - expected} extra param(s)",
+                                line, col, mname,
+                            )
+            self.current_method = None
 
         # Check for empty containers
         if name == "classes" and not self.classes_has_children:

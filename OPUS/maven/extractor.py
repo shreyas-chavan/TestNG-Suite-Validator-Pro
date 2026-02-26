@@ -6,6 +6,7 @@ and standalone JAR files for semantic validation of TestNG XML suites.
 """
 
 import os
+import io
 import json
 import zipfile
 import logging
@@ -22,7 +23,7 @@ def _check_jawa() -> bool:
     global _jawa_available
     if _jawa_available is None:
         try:
-            from jawa.classfile import ClassFile
+            from jawa.cf import ClassFile
             from jawa.util.descriptor import method_descriptor
             _jawa_available = True
         except ImportError:
@@ -119,7 +120,7 @@ class MavenMetadataExtractor:
             logger.error("Cannot extract JAR metadata: jawa library not installed")
             return {}
 
-        from jawa.classfile import ClassFile
+        from jawa.cf import ClassFile
         from jawa.util.descriptor import method_descriptor
 
         metadata: Dict[str, dict] = {}
@@ -134,7 +135,7 @@ class MavenMetadataExtractor:
 
                     try:
                         class_data = jar.read(file_info.filename)
-                        cf = ClassFile(class_data)
+                        cf = ClassFile(io.BytesIO(class_data))
                         class_name = cf.this.name.value.replace('/', '.')
 
                         methods: Dict[str, dict] = {}

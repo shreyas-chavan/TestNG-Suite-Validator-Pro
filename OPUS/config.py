@@ -97,6 +97,7 @@ CODE_META: Dict[str, tuple] = {
     # Metadata
     "E300": ("Class not found in Project", "ERROR"),
     "E301": ("Method not found in Class", "ERROR"),
+    "E302": ("Optional parameter(s) may be missing", "INFO"),
     "E303": ("Invalid Enum Value", "ERROR"),
     "E310": ("Suite file not found", "ERROR"),
     # Groups (new)
@@ -122,23 +123,47 @@ class ThemeColors:
     highlight: str = "#fff3e0"
     err_highlight: str = "#ffebee"
     code_bg: str = "#e3f2fd"
+    toolbar_bg: str = "#f5f5f5"
+    sidebar_bg: str = "#f5f5f5"
+    tab_bg: str = "#e0e0e0"
+    tab_active: str = "#ffffff"
+    selection: str = "#bbdefb"
+    menu_bg: str = "#ffffff"
+    menu_fg: str = "#212121"
+    statusbar_bg: str = "#e0e0e0"
+    statusbar_fg: str = "#555555"
+    heading: str = "#1565c0"
+    muted: str = "#999999"
 
 LIGHT_THEME = ThemeColors()
+
+# Monokai-inspired dark theme (Sublime Text style)
 DARK_THEME = ThemeColors(
-    bg="#1e1e1e",
-    fg="#e0e0e0",
-    accent="#64b5f6",
-    error="#ef5350",
-    warning="#ffa726",
-    success="#66bb6a",
-    info="#42a5f5",
-    surface="#2d2d2d",
-    border="#424242",
-    editor_bg="#1e1e1e",
-    gutter_bg="#252525",
-    highlight="#3e2723",
-    err_highlight="#4e1e1e",
-    code_bg="#1a237e",
+    bg="#272822",
+    fg="#F8F8F2",
+    accent="#66D9EF",
+    error="#F92672",
+    warning="#FD971F",
+    success="#A6E22E",
+    info="#66D9EF",
+    surface="#1E1F1C",
+    border="#3E3D32",
+    editor_bg="#272822",
+    gutter_bg="#2D2E27",
+    highlight="#3E3D32",
+    err_highlight="#49242B",
+    code_bg="#3E3D32",
+    toolbar_bg="#1E1F1C",
+    sidebar_bg="#21221D",
+    tab_bg="#2D2E27",
+    tab_active="#272822",
+    selection="#49483E",
+    menu_bg="#1E1F1C",
+    menu_fg="#F8F8F2",
+    statusbar_bg="#A6E22E",
+    statusbar_fg="#1E1F1C",
+    heading="#E6DB74",
+    muted="#75715E",
 )
 
 # ─── Application Config (persisted) ───────────────────────
