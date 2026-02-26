@@ -14,6 +14,101 @@ from typing import Dict, List, Optional, Callable
 
 logger = logging.getLogger(__name__)
 
+# ─── JVM Type Descriptor → Human-Readable Mapping ──────────
+_JVM_PRIMITIVES = {
+    'B': 'byte', 'C': 'char', 'D': 'double', 'F': 'float',
+    'I': 'int', 'J': 'long', 'S': 'short', 'Z': 'boolean', 'V': 'void',
+}
+
+_COMMON_JAVA_TYPES = {
+    'java.lang.String': 'String', 'java.lang.Integer': 'Integer',
+    'java.lang.Long': 'Long', 'java.lang.Double': 'Double',
+    'java.lang.Float': 'Float', 'java.lang.Boolean': 'Boolean',
+    'java.lang.Object': 'Object', 'java.lang.Class': 'Class',
+    'java.util.List': 'List', 'java.util.Map': 'Map',
+    'java.util.Set': 'Set', 'java.util.Collection': 'Collection',
+}
+
+
+def _simplify_class_name(full_name: str) -> str:
+    """Simplify a fully-qualified class name to its short form.
+    e.g. 'java.lang.String' → 'String', 'com.example.Foo' → 'Foo'
+    """
+    s = full_name.replace('/', '.')
+    if s in _COMMON_JAVA_TYPES:
+        return _COMMON_JAVA_TYPES[s]
+    return s.rsplit('.', 1)[-1] if '.' in s else s
+
+
+def _clean_jvm_type(raw) -> str:
+    """Convert any JVM type representation to a human-readable Java type.
+
+    Handles:
+      - jawa JVMType objects (has .name / .dimensions attrs)
+      - JVMType repr strings: JVMType(base_type='L', dimensions=0, name='java/lang/String')
+      - Simple descriptors: I, J, Z, D, Ljava/lang/String;, [I
+      - Already clean names: String, int, boolean
+    """
+    if raw is None:
+        return 'unknown'
+
+    # ── If it's a jawa JVMType object, use attrs directly ──
+    if hasattr(raw, 'name') and hasattr(raw, 'dimensions'):
+        name = str(raw.name).replace('/', '.')
+        dims = int(raw.dimensions) if raw.dimensions else 0
+        clean = _JVM_PRIMITIVES.get(name, _simplify_class_name(name))
+        return clean + '[]' * dims
+
+    s = str(raw).strip()
+    if not s:
+        return 'unknown'
+
+    # ── Parse JVMType(...) repr string ──
+    if s.startswith('JVMType('):
+        import re
+        name_m = re.search(r"name='([^']*)'", s)
+        dim_m = re.search(r"dimensions=(\d+)", s)
+        if name_m:
+            name = name_m.group(1).replace('/', '.')
+            dims = int(dim_m.group(1)) if dim_m else 0
+            clean = _JVM_PRIMITIVES.get(name, _simplify_class_name(name))
+            return clean + '[]' * dims
+        return 'unknown'
+
+    # ── Simple single-char JVM primitive ──
+    if s in _JVM_PRIMITIVES:
+        return _JVM_PRIMITIVES[s]
+
+    # ── Array types: [I, [Ljava/lang/String; ──
+    if s.startswith('['):
+        inner = s.lstrip('[')
+        return _clean_jvm_type(inner) + '[]'
+
+    # ── Object reference: Ljava/lang/String; ──
+    if s.startswith('L') and s.endswith(';'):
+        return _simplify_class_name(s[1:-1])
+
+    # ── Already a clean name ──
+    return _simplify_class_name(s)
+
+
+def _clean_annotation(raw) -> str:
+    """Convert JVM annotation descriptor to short name.
+    e.g. 'Lorg/testng/annotations/Test;' → 'Test'
+    """
+    s = str(raw).strip()
+    # Handle JVMType repr
+    if s.startswith('JVMType('):
+        import re
+        name_m = re.search(r"name='([^']*)'", s)
+        if name_m:
+            s = name_m.group(1)
+    # Strip L...; wrapper
+    if s.startswith('L') and s.endswith(';'):
+        s = s[1:-1]
+    return s.split('/')[-1].rstrip(';')
+
+
 # Lazy import for jawa (optional heavy dependency)
 _jawa_available = None
 
@@ -147,24 +242,20 @@ class MavenMetadataExtractor:
                             for attr in method.attributes:
                                 if hasattr(attr, 'annotations'):
                                     for ann in attr.annotations:
-                                        ann_name = str(ann.type.name.value)
+                                        ann_name = _clean_annotation(str(ann.type.name.value))
                                         annotations.append(ann_name)
 
                             try:
                                 desc = method_descriptor(method.descriptor.value)
                                 params = []
                                 for i, param_type in enumerate(desc.args):
-                                    param_type_str = str(param_type)
-                                    if param_type_str.startswith('L') and param_type_str.endswith(';'):
-                                        param_type_str = param_type_str[1:-1].replace('/', '.')
+                                    param_type_str = _clean_jvm_type(param_type)
                                     params.append({
                                         'name': f'arg{i}',
                                         'type': param_type_str,
                                     })
 
-                                return_type = str(desc.returns)
-                                if return_type.startswith('L') and return_type.endswith(';'):
-                                    return_type = return_type[1:-1].replace('/', '.')
+                                return_type = _clean_jvm_type(desc.returns)
 
                                 is_test = any('Test' in ann for ann in annotations)
 

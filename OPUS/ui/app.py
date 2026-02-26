@@ -32,6 +32,10 @@ from ..models import (
 )
 from ..validators import validate_file
 from ..fixes import generate_fix, apply_auto_fix, batch_auto_fix
+from ..fixes.knowledge_base import (
+    get_knowledge, get_class_reference, get_method_reference,
+    get_missing_params_info,
+)
 from ..utils import format_xml_content, format_xml_file, read_file_safe
 from ..utils.file_utils import find_xml_files, validate_file_path
 from ..exporters import export_html, export_csv, export_json
@@ -223,6 +227,9 @@ class ValidatorApp:
         # Help menu
         help_m = tk.Menu(menu, tearoff=0)
         menu.add_cascade(label="Help", menu=help_m)
+        help_m.add_command(label="How to Use", command=self._show_how_to_use)
+        help_m.add_command(label="Error Code Reference", command=self._show_error_codes)
+        help_m.add_separator()
         help_m.add_command(label="About", command=self._show_about)
 
         # Key bindings
@@ -489,24 +496,31 @@ class ValidatorApp:
     # ─── File Management ───────────────────────────────────
 
     def add_files(self):
+        init_dir = self.config.last_validation_path or self.config.last_directory or None
         paths = filedialog.askopenfilenames(
             filetypes=[("XML Files", "*.xml"), ("All Files", "*.*")],
-            initialdir=self.config.last_directory or None,
+            initialdir=init_dir,
         )
         added = 0
         for p in paths:
             if self._add_single_file(p):
                 added += 1
         if paths:
-            self.config.last_directory = str(Path(paths[0]).parent)
+            parent = str(Path(paths[0]).parent)
+            self.config.last_directory = parent
+            self.config.last_validation_path = parent
+            self.config.save()
         if added:
             self._set_status(f"Added {added} file(s)")
 
     def add_folder(self):
-        folder = filedialog.askdirectory(initialdir=self.config.last_directory or None)
+        init_dir = self.config.last_validation_path or self.config.last_directory or None
+        folder = filedialog.askdirectory(initialdir=init_dir)
         if not folder:
             return
         self.config.last_directory = folder
+        self.config.last_validation_path = folder
+        self.config.save()
         xml_files = find_xml_files(folder)
         added = 0
         for p in xml_files:
@@ -709,7 +723,7 @@ class ValidatorApp:
         except tk.TclError:
             win.geometry("1200x800")
 
-        # Main layout: Vertical split (upper: errors+editor, lower: fix panel)
+        # Main layout: Vertical split (upper: errors+editor, lower: fix tabs)
         pane = ttk.PanedWindow(win, orient=tk.VERTICAL)
         pane.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
@@ -774,24 +788,68 @@ class ValidatorApp:
         # Error highlighting tag
         code_txt.tag_config("err_line", background=c.err_highlight)
 
-        # ── Fix Panel ──
-        fix_fr = ttk.LabelFrame(pane, text="Fix Suggestions")
+        # ══════════════════════════════════════════════════════
+        # ── Fix Panel — 4-Tab Notebook ──
+        # ══════════════════════════════════════════════════════
+        fix_fr = ttk.LabelFrame(pane, text="Smart Fix Assistant")
         pane.add(fix_fr, weight=1)
 
-        fix_txt = scrolledtext.ScrolledText(
-            fix_fr, bg=c.surface, fg=c.fg, font=('Segoe UI', 10), wrap="word",
-            borderwidth=0, highlightthickness=0, padx=8, pady=4,
-            selectbackground=c.selection, selectforeground=c.fg,
+        # Style the notebook tabs
+        self.style.configure("Fix.TNotebook", background=c.bg, borderwidth=0)
+        self.style.configure("Fix.TNotebook.Tab",
+            padding=(14, 6), font=('Segoe UI', 9, 'bold'),
+            background=c.tab_bg, foreground=c.fg,
         )
-        fix_txt.pack(fill=tk.BOTH, expand=True)
+        self.style.map("Fix.TNotebook.Tab",
+            background=[("selected", c.surface)],
+            foreground=[("selected", c.accent)],
+        )
 
-        # Configure text tags for rich formatting
-        fix_txt.tag_config("header", font=('Segoe UI', 11, 'bold'), foreground=c.accent)
-        fix_txt.tag_config("bold", font=('Segoe UI', 10, 'bold'), foreground=c.heading)
-        fix_txt.tag_config("context", font=('Consolas', 10),
-                           background=c.highlight, foreground=c.fg, lmargin1=10)
-        fix_txt.tag_config("code", font=('Consolas', 10),
-                           background=c.code_bg, foreground=c.success, lmargin1=10)
+        notebook = ttk.Notebook(fix_fr, style="Fix.TNotebook")
+        notebook.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+
+        # Helper to create a themed ScrolledText for each tab
+        def make_tab_text(parent):
+            txt = scrolledtext.ScrolledText(
+                parent, bg=c.surface, fg=c.fg, font=('Segoe UI', 10), wrap="word",
+                borderwidth=0, highlightthickness=0, padx=10, pady=6,
+                selectbackground=c.selection, selectforeground=c.fg,
+                state="disabled",
+            )
+            txt.pack(fill=tk.BOTH, expand=True)
+            # Rich formatting tags
+            txt.tag_config("header", font=('Segoe UI', 11, 'bold'), foreground=c.accent)
+            txt.tag_config("subheader", font=('Segoe UI', 10, 'bold'), foreground=c.heading)
+            txt.tag_config("bold", font=('Segoe UI', 10, 'bold'), foreground=c.fg)
+            txt.tag_config("context", font=('Consolas', 10),
+                           background=c.highlight, foreground=c.fg, lmargin1=10, lmargin2=10)
+            txt.tag_config("code", font=('Consolas', 10),
+                           background=c.code_bg, foreground=c.success, lmargin1=10, lmargin2=10)
+            txt.tag_config("info", foreground=c.info, font=('Segoe UI', 10))
+            txt.tag_config("warn", foreground=c.warning, font=('Segoe UI', 10))
+            txt.tag_config("err", foreground=c.error, font=('Segoe UI', 10))
+            txt.tag_config("muted", foreground=c.muted, font=('Segoe UI', 9, 'italic'))
+            return txt
+
+        # Tab 1: Quick Fix
+        tab1_fr = ttk.Frame(notebook)
+        notebook.add(tab1_fr, text="  Quick Fix  ")
+        fix_txt = make_tab_text(tab1_fr)
+
+        # Tab 2: Explain
+        tab2_fr = ttk.Frame(notebook)
+        notebook.add(tab2_fr, text="  Explain  ")
+        explain_txt = make_tab_text(tab2_fr)
+
+        # Tab 3: Sample Usage
+        tab3_fr = ttk.Frame(notebook)
+        notebook.add(tab3_fr, text="  Sample Usage  ")
+        sample_txt = make_tab_text(tab3_fr)
+
+        # Tab 4: Reference
+        tab4_fr = ttk.Frame(notebook)
+        notebook.add(tab4_fr, text="  Reference  ")
+        ref_txt = make_tab_text(tab4_fr)
 
         # Load file content
         file_lines: List[str] = []
@@ -805,41 +863,280 @@ class ValidatorApp:
         errors = entry.result.errors if entry.result else []
         self._populate_errors(err_list, errors)
 
-        # Error selection handler
+        # Get merged metadata for reference tab
+        merged_meta = self._get_merged_metadata()
+
+        # ── Error selection handler ──
         def on_select(evt):
             sel_idx = err_list.curselection()
             if not sel_idx or not entry.result:
                 return
             err = entry.result.errors[sel_idx[0]]
 
-            # Highlight error line
+            # Highlight error line in editor
             code_txt.tag_remove("err_line", "1.0", "end")
             if err.line:
                 code_txt.tag_add("err_line", f"{err.line}.0", f"{err.line}.end")
                 code_txt.see(f"{err.line}.0")
 
-            # Render fix suggestion
+            # ── Tab 1: Quick Fix ──
             fix = generate_fix(err, file_lines)
             fix_txt.config(state="normal")
             fix_txt.delete("1.0", "end")
-
             fix_txt.insert("end", f"{fix.title}\n\n", "header")
 
-            if fix.context:
-                fix_txt.insert("end", "\U0001f4cd Your Code (Context):\n", "bold")
+            # Show the problematic line from the file
+            if err.line and 0 < err.line <= len(file_lines):
+                fix_txt.insert("end", "Problem Line:\n", "subheader")
+                fix_txt.insert("end", f"  Line {err.line}: ", "muted")
+                fix_txt.insert("end", file_lines[err.line - 1].strip() + "\n\n", "context")
+
+            if fix.context and fix.context.strip() != file_lines[err.line - 1].strip() if err.line and 0 < err.line <= len(file_lines) else fix.context:
+                fix_txt.insert("end", "Surrounding Context:\n", "subheader")
                 fix_txt.insert("end", fix.context + "\n\n", "context")
 
-            for step in fix.steps:
-                fix_txt.insert("end", f"{step}\n")
+            if fix.steps:
+                fix_txt.insert("end", "How to Fix:\n", "subheader")
+                for step in fix.steps:
+                    fix_txt.insert("end", f"  {step}\n")
+                fix_txt.insert("end", "\n")
 
             if fix.code:
-                fix_txt.insert("end", "\n\U0001f4a1 Example Fix:\n", "bold")
-                fix_txt.insert("end", fix.code, "code")
+                fix_txt.insert("end", "Corrected Code:\n", "subheader")
+                fix_txt.insert("end", fix.code + "\n", "code")
 
+            if err.code in AUTO_FIXABLE_CODES:
+                fix_txt.insert("end", "\n\u2728 Auto-Fix Available! ", "info")
+                fix_txt.insert("end", "Click 'Fix Selected' or 'Fix All' above.\n", "info")
+
+            # Context-aware tips for specific error types
+            if err.code == "E302" and merged_meta and err.context_data:
+                fix_txt.insert("end", "\nTip: ", "subheader")
+                fix_txt.insert("end", "Check the 'Reference' tab for the full parameter list.\n", "info")
+                fix_txt.insert("end", "Some parameters may be optional — this warning may be safe to ignore.\n", "muted")
+            elif err.code in ("E300", "E301"):
+                fix_txt.insert("end", "\nTip: ", "subheader")
+                fix_txt.insert("end", "Check the 'Reference' tab for similar names from your JARs.\n", "info")
             fix_txt.config(state="disabled")
 
+            # ── Tab 2: Explain ──
+            kb = get_knowledge(err.code)
+            explain_txt.config(state="normal")
+            explain_txt.delete("1.0", "end")
+            code_desc = CODE_META.get(err.code, (err.code, ""))[0]
+            sev = CODE_META.get(err.code, ("", "ERROR"))[1]
+            sev_tag = {"ERROR": "err", "WARNING": "warn", "INFO": "info"}.get(sev, "bold")
+
+            # Header with severity badge
+            explain_txt.insert("end", f"[{err.code}] {code_desc}\n", "header")
+            sev_labels = {
+                "ERROR": "ERROR — Must be fixed before tests can run",
+                "WARNING": "WARNING — Should review, but tests may still run",
+                "INFO": "INFO — Informational, no action required",
+            }
+            explain_txt.insert("end", f"Severity: {sev_labels.get(sev, sev)}\n", sev_tag)
+
+            # Show the actual error message for context
+            explain_txt.insert("end", f"\nYour Issue: ", "subheader")
+            explain_txt.insert("end", f"{err.message}\n", "")
+            if err.line:
+                explain_txt.insert("end", f"Location: Line {err.line}\n", "muted")
+            explain_txt.insert("end", "\n")
+
+            explain_txt.insert("end", "What This Means:\n", "subheader")
+            explain_txt.insert("end", kb["explain"] + "\n\n", "")
+
+            if kb.get("mistakes"):
+                explain_txt.insert("end", "Common Mistakes That Cause This:\n", "subheader")
+                for m in kb["mistakes"]:
+                    explain_txt.insert("end", f"  \u2022 {m}\n", "warn")
+                explain_txt.insert("end", "\n")
+
+            # Add helpful cross-references
+            explain_txt.insert("end", "Next Steps:\n", "subheader")
+            explain_txt.insert("end", "  \u2022 See the 'Quick Fix' tab for step-by-step fix instructions\n", "info")
+            explain_txt.insert("end", "  \u2022 See the 'Sample Usage' tab for correct XML examples\n", "info")
+            if err.code in ("E300", "E301", "E302", "E303"):
+                explain_txt.insert("end", "  \u2022 See the 'Reference' tab for data from your project JARs\n", "info")
+            explain_txt.config(state="disabled")
+
+            # ── Tab 3: Sample Usage ──
+            sample_txt.config(state="normal")
+            sample_txt.delete("1.0", "end")
+            sample_txt.insert("end", f"Correct XML for [{err.code}] {code_desc}\n\n", "header")
+
+            # Show what's wrong first
+            if err.line and 0 < err.line <= len(file_lines):
+                sample_txt.insert("end", "Your Current Code:\n", "subheader")
+                start = max(0, err.line - 2)
+                end = min(len(file_lines), err.line + 1)
+                for ln in range(start, end):
+                    prefix = " >> " if ln == err.line - 1 else "    "
+                    tag = "warn" if ln == err.line - 1 else "muted"
+                    sample_txt.insert("end", f"{prefix}L{ln+1}: {file_lines[ln].rstrip()}\n", tag)
+                sample_txt.insert("end", "\n")
+
+            # Then show the correct pattern
+            if kb.get("sample"):
+                sample_txt.insert("end", "Correct Pattern:\n", "subheader")
+                sample_txt.insert("end", kb["sample"] + "\n", "code")
+            else:
+                sample_txt.insert("end", "No sample available for this error code.\n", "muted")
+
+            # For E302, add context-aware parameter info
+            if err.code == "E302" and merged_meta and err.context_data:
+                mname = err.context_data
+                cls_name = self._find_class_for_method_in_file(path, err.line)
+                if cls_name:
+                    info = get_missing_params_info(cls_name, mname, 0, merged_meta)
+                    if info:
+                        sample_txt.insert("end", "\n\nParameter Details for Your Method:\n", "subheader")
+                        sample_txt.insert("end", info + "\n", "context")
+
+            # For E301, show suggested XML for similar methods
+            if err.code == "E301" and merged_meta and err.suggestion:
+                sample_txt.insert("end", "\nSuggested Fix:\n", "subheader")
+                for s in err.suggestion.replace("Did you mean: ", "").split(", "):
+                    s = s.strip().rstrip("?")
+                    if s:
+                        sample_txt.insert("end", f'  <include name="{s}"/>\n', "code")
+            sample_txt.config(state="disabled")
+
+            # ── Tab 4: Reference ──
+            ref_txt.config(state="normal")
+            ref_txt.delete("1.0", "end")
+            if err.code in ("E300", "E301", "E302", "E303") and merged_meta:
+                ref_txt.insert("end", "Project Reference (from your JARs)\n\n", "header")
+                ctx_name = err.context_data or ""
+
+                if err.code == "E300":
+                    short_ctx = ctx_name.rsplit('.', 1)[-1] if '.' in ctx_name else ctx_name
+                    ref_txt.insert("end", f"Class '{short_ctx}' was not found in your project.\n", "warn")
+                    ref_txt.insert("end", f"Full path searched: {ctx_name}\n\n", "muted")
+                    if err.suggestion:
+                        ref_txt.insert("end", "Similar classes found in your JARs:\n", "subheader")
+                        for s in err.suggestion.replace("Did you mean: ", "").split(", "):
+                            s = s.strip().rstrip("?")
+                            if s:
+                                short_s = s.rsplit('.', 1)[-1] if '.' in s else s
+                                ref_txt.insert("end", f"  \u2022 {short_s}", "info")
+                                ref_txt.insert("end", f"  ({s})\n", "muted")
+                        # Show details of first match
+                        first = err.suggestion.replace("Did you mean: ", "").split(", ")[0].strip().rstrip("?")
+                        if first:
+                            ref_info = get_class_reference(first, merged_meta)
+                            if ref_info:
+                                ref_txt.insert("end", f"\nMethods in {first.rsplit('.', 1)[-1]}:\n", "subheader")
+                                ref_txt.insert("end", ref_info + "\n", "context")
+
+                elif err.code in ("E301", "E302"):
+                    cls_name = self._find_class_for_method_in_file(path, err.line)
+                    if cls_name:
+                        short_cls = cls_name.rsplit('.', 1)[-1] if '.' in cls_name else cls_name
+                        if err.code == "E301":
+                            ref_txt.insert("end", f"Method '{ctx_name}' not found in class {short_cls}\n\n", "warn")
+                            if err.suggestion:
+                                ref_txt.insert("end", "Similar methods found:\n", "subheader")
+                                for s in err.suggestion.replace("Did you mean: ", "").split(", "):
+                                    s = s.strip().rstrip("?")
+                                    if s:
+                                        ref_txt.insert("end", f"  \u2022 {s}\n", "info")
+                                ref_txt.insert("end", "\n")
+
+                        # Show method details if method exists (E302)
+                        mref = get_method_reference(cls_name, ctx_name, merged_meta)
+                        if mref:
+                            ref_txt.insert("end", "Method Details:\n", "subheader")
+                            ref_txt.insert("end", mref + "\n\n", "context")
+
+                        # Show available methods in class
+                        cref = get_class_reference(cls_name, merged_meta)
+                        if cref:
+                            ref_txt.insert("end", f"All Available Methods in {short_cls}:\n", "subheader")
+                            ref_txt.insert("end", cref + "\n", "context")
+                    else:
+                        ref_txt.insert("end", "Could not determine the parent class from XML context.\n", "muted")
+                        ref_txt.insert("end", "Make sure the <class> tag has a valid name attribute.\n", "muted")
+
+                elif err.code == "E303":
+                    ref_txt.insert("end", f"Invalid value: '{ctx_name}'\n\n", "warn")
+                    if err.suggestion:
+                        ref_txt.insert("end", "Allowed values for this field:\n", "subheader")
+                        ref_txt.insert("end", err.suggestion + "\n", "code")
+                    ref_txt.insert("end", "\nNote: Enum values are case-sensitive.\n", "muted")
+
+            elif err.code in ("E300", "E301", "E302", "E303"):
+                ref_txt.insert("end", "Project Reference\n\n", "header")
+                ref_txt.insert("end", "No project JARs loaded yet.\n\n", "warn")
+                ref_txt.insert("end", "To see class and method info from your project:\n\n", "")
+                ref_txt.insert("end", "  1. Click 'Maven' in the toolbar\n", "")
+                ref_txt.insert("end", "  2. Select your project's JAR files or .m2 folder\n", "")
+                ref_txt.insert("end", "  3. Click 'Scan' to load the metadata\n", "")
+                ref_txt.insert("end", "  4. Re-validate your XML file\n", "")
+                ref_txt.insert("end", "\nThe Reference tab will then show method names,\n", "muted")
+                ref_txt.insert("end", "parameter info, and suggested XML from your JARs.\n", "muted")
+            else:
+                # For structural errors — provide useful reference info
+                ref_txt.insert("end", "TestNG XML Reference\n\n", "header")
+                ref_txt.insert("end", "Correct TestNG XML Structure:\n", "subheader")
+                ref_txt.insert("end", (
+                    '<suite name="...">\n'
+                    '  <listeners>           (optional)\n'
+                    '    <listener class-name="..."/>\n'
+                    '  </listeners>\n'
+                    '  <parameter name="..." value="..."/>  (optional, suite-level)\n'
+                    '  <test name="...">\n'
+                    '    <parameter name="..." value="..."/>  (optional, test-level)\n'
+                    '    <classes>\n'
+                    '      <class name="com.example.TestClass">\n'
+                    '        <methods>        (optional)\n'
+                    '          <include name="methodName"/>\n'
+                    '          <exclude name="methodName"/>\n'
+                    '        </methods>\n'
+                    '      </class>\n'
+                    '    </classes>\n'
+                    '  </test>\n'
+                    '</suite>\n'
+                ), "code")
+                ref_txt.insert("end", "\nKey Rules:\n", "subheader")
+                ref_txt.insert("end", "  \u2022 One <suite> per file (the root element)\n", "")
+                ref_txt.insert("end", "  \u2022 Each <test> must have a unique name\n", "")
+                ref_txt.insert("end", "  \u2022 Use <classes> OR <packages> in a <test>, not both\n", "")
+                ref_txt.insert("end", "  \u2022 Class names must be fully-qualified (com.example.MyTest)\n", "")
+                ref_txt.insert("end", "  \u2022 Method names are case-sensitive\n", "")
+                ref_txt.insert("end", "  \u2022 No spaces allowed in class or method names\n", "")
+
+                # Add attribute reference for attribute errors
+                if err.code in ("E180", "E181", "E182", "E183", "E184", "E185"):
+                    ref_txt.insert("end", "\nValid Attribute Values:\n", "subheader")
+                    ref_txt.insert("end", "  parallel: false, methods, tests, classes, instances\n", "")
+                    ref_txt.insert("end", "  thread-count: positive integer (e.g., 5)\n", "")
+                    ref_txt.insert("end", "  verbose: 0 to 10\n", "")
+                    ref_txt.insert("end", "  preserve-order: true or false\n", "")
+                    ref_txt.insert("end", "  Boolean attrs: true or false\n", "")
+            ref_txt.config(state="disabled")
+
         err_list.bind("<<ListboxSelect>>", on_select)
-        code_txt.bind("<Key>", lambda e: stat_lbl.config(text="\u2022 Modified", fg="blue"))
+        code_txt.bind("<Key>", lambda e: stat_lbl.config(text="\u2022 Modified", fg=c.warning))
+
+    def _find_class_for_method_in_file(self, path: str, error_line: Optional[int]) -> Optional[str]:
+        """Find the class name context for a method error by scanning XML near the error line."""
+        if not error_line:
+            return None
+        try:
+            content, _ = read_file_safe(path)
+            if not content:
+                return None
+            import re
+            lines = content.splitlines()
+            # Search backwards from error line for nearest <class name="...">
+            for i in range(min(error_line - 1, len(lines) - 1), -1, -1):
+                m = re.search(r'<class\s+name\s*=\s*["\']([^"\']+)', lines[i])
+                if m:
+                    return m.group(1)
+        except Exception:
+            pass
+        return None
 
     # ─── Editor Actions ────────────────────────────────────
 
@@ -993,64 +1290,74 @@ class ValidatorApp:
         if not path:
             return
         try:
+            c = self.colors
             with open(path, encoding='utf-8') as f:
                 self.metadata = json.load(f)
             self.meta_lbl.config(
-                text=f"\u2705 Meta: {len(self.metadata)} classes",
-                bg="#e8f5e9", fg="#2e7d32",
+                text=f"Meta: {len(self.metadata)} classes",
+                bg=c.success, fg="#ffffff",
             )
             self._set_status(f"Loaded metadata: {len(self.metadata)} classes")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load metadata:\n{e}")
 
     def scan_maven_jars(self):
+        c = self.colors
         dialog = tk.Toplevel(self.root)
         dialog.title("Maven JAR Scanner")
-        dialog.geometry("650x500")
+        dialog.geometry("700x540")
+        dialog.configure(bg=c.bg)
         dialog.transient(self.root)
         dialog.grab_set()
 
-        ttk.Label(dialog, text="Scan Maven JARs for Metadata",
-                  font=('Segoe UI', 14, 'bold')).pack(pady=10)
-        ttk.Label(dialog, text="Choose an option below (metadata accumulates across scans):",
-                  font=('Segoe UI', 10)).pack(pady=5)
+        # Title
+        tk.Label(dialog, text="Scan Maven JARs for Metadata",
+                 font=('Segoe UI', 14, 'bold'), bg=c.bg, fg=c.accent).pack(pady=(12, 4))
+        tk.Label(dialog, text="Metadata accumulates across scans. Choose an option below:",
+                 font=('Segoe UI', 10), bg=c.bg, fg=c.muted).pack(pady=(0, 8))
 
         # Option 1: Multiple JAR files
-        f1 = ttk.LabelFrame(dialog, text="Option 1: Select JAR File(s) - supports multiple selection", padding=10)
-        f1.pack(fill=tk.X, padx=20, pady=6)
-        jar_var = tk.StringVar()
+        f1 = ttk.LabelFrame(dialog, text="Option 1: Select JAR File(s)", padding=10)
+        f1.pack(fill=tk.X, padx=20, pady=5)
+        jar_var = tk.StringVar(value=self.config.last_maven_jar_path)
         jar_entry = ttk.Entry(f1, textvariable=jar_var, width=50)
         jar_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         def browse_jars():
+            init_dir = os.path.dirname(self.config.last_maven_jar_path) if self.config.last_maven_jar_path else None
             paths = filedialog.askopenfilenames(
                 title="Select JAR(s)", filetypes=[("JAR Files", "*.jar"), ("All Files", "*.*")],
-                parent=dialog,
+                parent=dialog, initialdir=init_dir,
             )
             if paths:
                 jar_var.set(";".join(paths))
+                self.config.last_maven_jar_path = paths[0]
+                self.config.save()
 
-        browse_jar_btn = ttk.Button(f1, text="Browse JAR(s)", command=browse_jars)
-        browse_jar_btn.pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Button(f1, text="Browse", command=browse_jars,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=(4, 0))
 
         # Option 2: Folder
         f2 = ttk.LabelFrame(dialog, text="Option 2: Select JAR Folder", padding=10)
-        f2.pack(fill=tk.X, padx=20, pady=6)
-        folder_var = tk.StringVar()
+        f2.pack(fill=tk.X, padx=20, pady=5)
+        folder_var = tk.StringVar(value=self.config.last_maven_folder_path)
         folder_entry = ttk.Entry(f2, textvariable=folder_var, width=50)
         folder_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         def browse_folder():
-            path = filedialog.askdirectory(title="Select Folder", parent=dialog)
+            init_dir = self.config.last_maven_folder_path or None
+            path = filedialog.askdirectory(title="Select Folder", parent=dialog, initialdir=init_dir)
             if path:
                 folder_var.set(path)
+                self.config.last_maven_folder_path = path
+                self.config.save()
 
-        browse_folder_btn = ttk.Button(f2, text="Browse Folder", command=browse_folder)
-        browse_folder_btn.pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Button(f2, text="Browse", command=browse_folder,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=(4, 0))
 
         # Option 3: Maven coordinates
         f3 = ttk.LabelFrame(dialog, text="Option 3: Maven Coordinates", padding=10)
-        f3.pack(fill=tk.X, padx=20, pady=6)
+        f3.pack(fill=tk.X, padx=20, pady=5)
         ttk.Label(f3, text="Group ID:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
         group_var = tk.StringVar()
         ttk.Entry(f3, textvariable=group_var, width=40).grid(row=0, column=1, padx=5)
@@ -1059,11 +1366,11 @@ class ValidatorApp:
         ttk.Entry(f3, textvariable=artifact_var, width=40).grid(row=1, column=1, padx=5)
 
         # Status display
-        status_frame = ttk.LabelFrame(dialog, text="Metadata Status", padding=6)
-        status_frame.pack(fill=tk.X, padx=20, pady=6)
+        status_frame = ttk.LabelFrame(dialog, text="Metadata Status", padding=8)
+        status_frame.pack(fill=tk.X, padx=20, pady=5)
         current_count = len(self.maven_metadata) if self.maven_metadata else 0
         status_var = tk.StringVar(value=f"Currently loaded: {current_count} classes")
-        ttk.Label(status_frame, textvariable=status_var, font=('Segoe UI', 9)).pack(anchor=tk.W)
+        ttk.Label(status_frame, textvariable=status_var, font=('Consolas', 10)).pack(anchor=tk.W)
 
         def start_scan():
             jar_str = jar_var.get().strip()
@@ -1073,8 +1380,12 @@ class ValidatorApp:
 
             if jar_str:
                 jar_paths = [j.strip() for j in jar_str.split(";") if j.strip()]
+                self.config.last_maven_jar_path = jar_paths[0]
+                self.config.save()
                 self._scan_multiple_jars(jar_paths, dialog)
             elif folder:
+                self.config.last_maven_folder_path = folder
+                self.config.save()
                 self._scan_jar_folder(folder, dialog)
             elif gid and aid:
                 self._scan_maven_coords(gid, aid, dialog)
@@ -1085,10 +1396,13 @@ class ValidatorApp:
 
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(pady=10)
-        ttk.Button(btn_frame, text="Start Scan", command=start_scan).pack(side=tk.LEFT, padx=8)
+        ttk.Button(btn_frame, text="Start Scan", command=start_scan,
+                   style="Accent.TButton").pack(side=tk.LEFT, padx=8)
         ttk.Button(btn_frame, text="Clear Metadata",
-                   command=lambda: self._clear_maven_metadata(status_var)).pack(side=tk.LEFT, padx=8)
-        ttk.Button(btn_frame, text="Close", command=dialog.destroy).pack(side=tk.LEFT, padx=8)
+                   command=lambda: self._clear_maven_metadata(status_var),
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=8)
+        ttk.Button(btn_frame, text="Close", command=dialog.destroy,
+                   style="Toolbar.TButton").pack(side=tk.LEFT, padx=8)
 
     def _scan_multiple_jars(self, jar_paths: List[str], dialog: tk.Toplevel):
         """Scan one or more JAR files and accumulate metadata."""
@@ -1240,14 +1554,128 @@ class ValidatorApp:
             f"{APP_TITLE}\n\n"
             f"A production-grade TestNG XML Suite Validator.\n\n"
             f"Features:\n"
-            f"  \u2022 42+ validation rules\n"
-            f"  \u2022 Tutorial-style fix suggestions\n"
-            f"  \u2022 Auto-fix engine\n"
-            f"  \u2022 Maven JAR metadata scanning\n"
+            f"  \u2022 45+ validation rules (structural, semantic, attribute)\n"
+            f"  \u2022 Smart Fix Assistant with 4-tab guidance\n"
+            f"  \u2022 Auto-fix engine for 16+ error types\n"
+            f"  \u2022 Maven JAR metadata scanning (bytecode analysis)\n"
+            f"  \u2022 Knowledge base with explanations & samples\n"
             f"  \u2022 HTML/CSV/JSON report export\n"
-            f"  \u2022 Dark/Light theme support\n\n"
+            f"  \u2022 Drag & Drop XML files\n"
+            f"  \u2022 Dark/Light Monokai theme\n"
+            f"  \u2022 CLI mode for CI/CD pipelines\n\n"
             f"Python {os.sys.version.split()[0]}"
         )
+
+    def _show_how_to_use(self):
+        c = self.colors
+        win = tk.Toplevel(self.root)
+        win.title("How to Use — TestNG Validator Pro")
+        win.geometry("750x600")
+        win.configure(bg=c.bg)
+
+        txt = scrolledtext.ScrolledText(
+            win, bg=c.surface, fg=c.fg, font=('Segoe UI', 10), wrap="word",
+            borderwidth=0, padx=16, pady=12,
+            selectbackground=c.selection, selectforeground=c.fg,
+        )
+        txt.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        txt.tag_config("h1", font=('Segoe UI', 14, 'bold'), foreground=c.accent)
+        txt.tag_config("h2", font=('Segoe UI', 11, 'bold'), foreground=c.heading)
+        txt.tag_config("code", font=('Consolas', 10), background=c.code_bg, foreground=c.success)
+        txt.tag_config("key", font=('Consolas', 10, 'bold'), foreground=c.warning)
+
+        txt.insert("end", "How to Use TestNG Validator Pro\n\n", "h1")
+
+        txt.insert("end", "1. Adding Files\n", "h2")
+        txt.insert("end", (
+            "  \u2022 Click 'Add Files' to select XML files (Ctrl+O)\n"
+            "  \u2022 Click 'Add Folder' to add all XML files from a directory\n"
+            "  \u2022 Drag & drop XML files directly into the application\n"
+            "  \u2022 Use File > Recent Files for previously opened files\n\n"
+        ))
+
+        txt.insert("end", "2. Validating\n", "h2")
+        txt.insert("end", (
+            "  \u2022 Click 'Validate' or press F5 to validate selected files\n"
+            "  \u2022 Check/uncheck files using the checkbox column\n"
+            "  \u2022 Results appear in the file list (PASS/WARN/FAIL)\n"
+            "  \u2022 Click a file to see its summary in the right panel\n\n"
+        ))
+
+        txt.insert("end", "3. Fixing Errors\n", "h2")
+        txt.insert("end", (
+            "  \u2022 Double-click a file to open the Editor + Smart Fix Assistant\n"
+            "  \u2022 Click an error in the Issues list to see fix guidance\n"
+            "  \u2022 The Smart Fix Assistant has 4 tabs:\n"
+            "      Quick Fix — Step-by-step fix instructions\n"
+            "      Explain — Why this error occurs\n"
+            "      Sample Usage — Correct XML patterns\n"
+            "      Reference — Bytecode info for Maven errors\n"
+            "  \u2022 Use 'Fix Selected' or 'Fix All' for auto-fixable errors\n\n"
+        ))
+
+        txt.insert("end", "4. Maven Integration\n", "h2")
+        txt.insert("end", (
+            "  \u2022 Click 'Maven' to load JAR metadata for semantic validation\n"
+            "  \u2022 Supports: JAR files, folders, Maven coordinates\n"
+            "  \u2022 Enables: class verification (E300), method checking (E301),\n"
+            "    parameter count (E302), and enum validation (E303)\n"
+            "  \u2022 Previously used paths are remembered between sessions\n\n"
+        ))
+
+        txt.insert("end", "5. Exporting Reports\n", "h2")
+        txt.insert("end", (
+            "  \u2022 Click 'Report' or use Export menu\n"
+            "  \u2022 Supports HTML, CSV, and JSON formats\n\n"
+        ))
+
+        txt.insert("end", "6. Keyboard Shortcuts\n", "h2")
+        txt.insert("end", "  Ctrl+O", "key")
+        txt.insert("end", "  — Add Files\n")
+        txt.insert("end", "  F5", "key")
+        txt.insert("end", "      — Validate Selected\n\n")
+
+        txt.insert("end", "7. CLI Mode\n", "h2")
+        txt.insert("end", "  ")
+        txt.insert("end", "python -m OPUS.main --cli file.xml", "code")
+        txt.insert("end", "\n  ")
+        txt.insert("end", "python -m OPUS.main --cli -v folder/", "code")
+        txt.insert("end", "\n  ")
+        txt.insert("end", "python -m OPUS.main --cli -o report.html file.xml", "code")
+        txt.insert("end", "\n")
+
+        txt.config(state="disabled")
+
+    def _show_error_codes(self):
+        c = self.colors
+        win = tk.Toplevel(self.root)
+        win.title("Error Code Reference")
+        win.geometry("700x500")
+        win.configure(bg=c.bg)
+
+        txt = scrolledtext.ScrolledText(
+            win, bg=c.surface, fg=c.fg, font=('Consolas', 10), wrap="word",
+            borderwidth=0, padx=12, pady=8,
+            selectbackground=c.selection, selectforeground=c.fg,
+        )
+        txt.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        txt.tag_config("h1", font=('Segoe UI', 13, 'bold'), foreground=c.accent)
+        txt.tag_config("err", foreground=c.error, font=('Consolas', 10, 'bold'))
+        txt.tag_config("warn", foreground=c.warning, font=('Consolas', 10, 'bold'))
+        txt.tag_config("info_t", foreground=c.info, font=('Consolas', 10, 'bold'))
+
+        txt.insert("end", "Error Code Reference\n\n", "h1")
+
+        for code in sorted(CODE_META.keys()):
+            desc, sev = CODE_META[code]
+            tag = {"ERROR": "err", "WARNING": "warn", "INFO": "info_t"}.get(sev, "err")
+            fixable = " [auto-fixable]" if code in AUTO_FIXABLE_CODES else ""
+            txt.insert("end", f"[{code}] ", tag)
+            txt.insert("end", f"{desc} ({sev}){fixable}\n")
+
+        txt.config(state="disabled")
 
     def _on_close(self):
         try:

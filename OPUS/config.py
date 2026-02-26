@@ -97,7 +97,7 @@ CODE_META: Dict[str, tuple] = {
     # Metadata
     "E300": ("Class not found in Project", "ERROR"),
     "E301": ("Method not found in Class", "ERROR"),
-    "E302": ("Optional parameter(s) may be missing", "INFO"),
+    "E302": ("Optional parameter(s) may be missing", "WARNING"),
     "E303": ("Invalid Enum Value", "ERROR"),
     "E310": ("Suite file not found", "ERROR"),
     # Groups (new)
@@ -178,6 +178,9 @@ class AppConfig:
     auto_validate_on_load: bool = False
     max_recent_files: int = MAX_RECENT_FILES
     default_encoding: str = "utf-8"
+    last_maven_jar_path: str = ""
+    last_maven_folder_path: str = ""
+    last_validation_path: str = ""
 
     def save(self) -> None:
         """Save config to disk."""
@@ -190,6 +193,9 @@ class AppConfig:
                 "debug_mode": self.debug_mode,
                 "auto_validate_on_load": self.auto_validate_on_load,
                 "default_encoding": self.default_encoding,
+                "last_maven_jar_path": self.last_maven_jar_path,
+                "last_maven_folder_path": self.last_maven_folder_path,
+                "last_validation_path": self.last_validation_path,
             }
             CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception as e:

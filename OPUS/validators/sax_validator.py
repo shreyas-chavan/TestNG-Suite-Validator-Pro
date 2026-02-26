@@ -85,7 +85,8 @@ class HybridValidator(ContentHandler):
     def _err(self, code: str, msg: str, line: int, col: int,
              ctx: Optional[str] = None, sugg: Optional[str] = None):
         meta = CODE_META.get(code, (msg, "ERROR"))
-        severity = Severity.WARNING if meta[1] == "WARNING" else Severity.ERROR
+        sev_map = {"WARNING": Severity.WARNING, "INFO": Severity.INFO}
+        severity = sev_map.get(meta[1], Severity.ERROR)
         auto_fixable = code in AUTO_FIXABLE_CODES
         self.errors.append(ValidationError(
             code=code, message=msg, line=line, col=col,

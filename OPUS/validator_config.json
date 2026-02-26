@@ -6,8 +6,11 @@
     "C:\\Users\\schavan\\Desktop\\Scripts\\SuiteValidation\\TEST_DUPLICATE_NAMES.xml",
     "C:\\Users\\schavan\\Desktop\\Scripts\\SuiteValidation\\TEST_IncompleteTags.xml"
   ],
-  "window_geometry": "1536x773+627+0",
+  "window_geometry": "1536x773+-48+10",
   "debug_mode": false,
   "auto_validate_on_load": false,
-  "default_encoding": "utf-8"
+  "default_encoding": "utf-8",
+  "last_maven_jar_path": "C:/Users/schavan/.m2/repository/com/eci/raft/tests/NxtGenTeqApi/1.0.54/NxtGenTeqApi-1.0.54.jar",
+  "last_maven_folder_path": "",
+  "last_validation_path": "C:\\Users\\schavan\\Desktop\\Scripts\\SuiteValidation"
 }

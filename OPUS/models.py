@@ -107,13 +107,29 @@ class ValidationResult:
         if not self.errors:
             return "PASS"
         elif self.error_count == 0:
-            return "WARN"
+            return "PASS"
+        return "FAIL"
+
+    @property
+    def has_warnings(self) -> bool:
+        return self.warning_count > 0
+
+    @property
+    def status_label(self) -> str:
+        """Human-readable status with warning qualifier."""
+        if not self.errors:
+            return "PASS"
+        elif self.error_count == 0:
+            return "PASS (warnings)"
         return "FAIL"
 
     @property
     def status_icon(self) -> str:
-        icons = {"PASS": "\u2705", "WARN": "\u26a0\ufe0f", "FAIL": "\u274c"}
-        return icons.get(self.status, "?")
+        if self.error_count > 0:
+            return "\u274c"
+        elif self.warning_count > 0 or self.info_count > 0:
+            return "\u26a0\ufe0f"
+        return "\u2705"
 
     def errors_by_code(self) -> Dict[str, List[ValidationError]]:
         """Group errors by their code."""
@@ -171,7 +187,7 @@ class FileEntry:
     def status_display(self) -> str:
         if self.result is None:
             return "\u23f3 Pending"
-        return f"{self.result.status_icon} {self.result.status}"
+        return f"{self.result.status_icon} {self.result.status_label}"
 
     @property
     def basename(self) -> str:

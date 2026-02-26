@@ -602,6 +602,21 @@ def _fix_unknown_method(err, ctx, line_num, bad_code):
     return FixSuggestion(title="\u2753 Fix: Unknown Method", steps=steps)
 
 
+@_register("E302")
+def _fix_param_count(err, ctx, line_num, bad_code):
+    steps = [
+        f"1. **The Issue:** {err.message}",
+        "2. **What This Means:** The number of <parameter> tags doesn't match "
+        "the method's Java signature.",
+        "3. **Note:** Some parameters may be optional or inherited from "
+        "parent <test>/<suite> scope.",
+        "4. **Action:** Check the Reference tab for the full parameter list.",
+    ]
+    if err.suggestion:
+        steps.append(f"5. **Suggestion:** {err.suggestion}")
+    return FixSuggestion(title="\u2139\ufe0f Info: Parameter Count Mismatch", steps=steps)
+
+
 @_register("E303")
 def _fix_invalid_enum(err, ctx, line_num, bad_code):
     steps = [

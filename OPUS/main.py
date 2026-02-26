@@ -26,7 +26,14 @@ def run_gui():
     import tkinter as tk
     from OPUS.ui.app import ValidatorApp
 
-    root = tk.Tk()
+    # Try TkinterDnD for native drag & drop support
+    root = None
+    try:
+        from tkinterdnd2 import TkinterDnD
+        root = TkinterDnD.Tk()
+    except (ImportError, Exception):
+        root = tk.Tk()
+
     app = ValidatorApp(root)
     root.mainloop()
 
