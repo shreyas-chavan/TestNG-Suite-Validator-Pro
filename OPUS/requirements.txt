@@ -1,0 +1,28 @@
+# TestNG Validator Pro v11.0 - Dependencies
+# Python 3.8+ required
+
+# ==================== CORE (no external deps needed) ====================
+# tkinter, xml.sax, json, csv, threading — all in Python stdlib
+
+# ==================== OPTIONAL: Modern UI ====================
+customtkinter>=5.2.0          # Modern UI components
+Pillow>=10.0.0                # Image processing for icons
+darkdetect>=0.8.0             # Auto-detect system dark/light theme
+
+# ==================== OPTIONAL: Syntax Highlighting ====================
+Pygments>=2.16.0              # XML syntax highlighting in editor
+
+# ==================== OPTIONAL: Maven Integration ====================
+jawa>=2.2.0                   # Java bytecode / JAR class file parsing
+
+# ==================== OPTIONAL: Drag & Drop ====================
+# tkinterdnd2>=0.3.0          # Drag & drop support (uncomment if needed)
+
+# ==================== OPTIONAL: Packaging ====================
+# pyinstaller>=5.13.0         # Build standalone executables
+
+# ==================== INSTALLATION ====================
+# Install all:     pip install -r requirements.txt
+# Core only:       No install needed (stdlib only)
+# Modern UI:       pip install customtkinter Pillow darkdetect
+# Maven support:   pip install jawa

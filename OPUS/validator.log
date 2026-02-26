@@ -1,0 +1,2 @@
+2026-02-26 18:05:54 [WARNING] testng_validator: Path not found: ..\test_sample.xml
+2026-02-26 18:05:54 [ERROR] testng_validator: No XML files found.
